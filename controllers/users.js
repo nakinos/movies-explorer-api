@@ -6,6 +6,7 @@ const ConflictError = require('../errors/ConflictError');
 const BadRequestError = require('../errors/BadRequestError');
 const { NotFoundUserMessage, ConflictUserMessage, BadRequestErrorMessage } = require('../constants/error-message');
 const { SignOutMessage } = require('../constants/success-message');
+const { JWT_SECRET_DEV } = require('../constants/dev-env');
 
 module.exports.getCurrentUser = (req, res, next) => {
   const { _id } = req.user;
@@ -47,8 +48,17 @@ module.exports.createUser = (req, res, next) => {
 
 module.exports.updateUser = (req, res, next) => {
   const { name, email } = req.body;
+  const { _id } = req.user;
 
-  User.findByIdAndUpdate(req.user._id, { name, email }, { new: true, runValidators: true })
+  User.findOne({ email, _id: { $ne: _id } })
+    .then((user) => {
+      if (user) throw new ConflictError(ConflictUserMessage);
+    })
+    .then(() => User.findByIdAndUpdate(
+      req.user._id,
+      { name, email },
+      { new: true, runValidators: true },
+    ))
     .then((user) => {
       if (!user) {
         throw new NotFoundError(NotFoundUserMessage);
@@ -70,7 +80,7 @@ module.exports.login = (req, res, next) => {
   return User.findUserByCredentials(email, password)
     .then((user) => {
       const { _id } = user;
-      const token = jwt.sign({ _id: user._id }, NODE_ENV === 'production' ? JWT_SECRET : 'some-secret-key', { expiresIn: '7d' });
+      const token = jwt.sign({ _id: user._id }, NODE_ENV === 'production' ? JWT_SECRET : JWT_SECRET_DEV, { expiresIn: '7d' });
       return res.cookie('token', token, {
         maxAge: 604800000, // 7 day in second
         httpOnly: true,
